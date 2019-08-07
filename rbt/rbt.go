@@ -140,30 +140,30 @@ func (n *Node) minimum() *Node {
 	return n
 }
 
-func (t *Tree) Nearest(key uint64) *Node {
+func (t *Tree) Nearest(key int64) *Node {
 	return nearestNode(t.root, key)
 }
 
-func nearestNode(root *Node, key uint64) *Node {
+func nearestNode(root *Node, key int64) *Node {
 	if root == nil {
 		return nil
 	}
 
 	var minDiffNode *Node
 
-	minDiff := uint64(math.MaxUint64)
+	minDiff := int64(math.MaxInt64)
 	n := root
 
 	for n != nil {
 		if n.key == key {
 			return n
 		}
-		currDiff := uint64(math.Abs(float64(n.key.(uint64) - key)))
+		currDiff := int64(math.Abs(float64(n.key.(int64) - key)))
 		if minDiff > currDiff {
 			minDiff = currDiff
 			minDiffNode = n
 		}
-		if key < n.key.(uint64) {
+		if key < n.key.(int64) {
 			n = n.left
 		} else {
 			n = n.right
@@ -214,10 +214,15 @@ func StringComparator(o1, o2 interface{}) int {
 type Tree struct {
 	root *Node      // tip of the tree
 	cmp  Comparator // required function to order keys
+	size int
 }
 
 func (t *Tree) Root() *Node {
 	return t.root
+}
+
+func (t *Tree) FastSize() int {
+	return t.size
 }
 
 // `lock` protects `logger`
@@ -409,6 +414,7 @@ func (t *Tree) Put(key interface{}, data interface{}) error {
 	if t.root == nil {
 		t.root = &Node{key: key, color: BLACK, payload: data}
 		logger.Printf("Added %s as root node\n", t.root.String())
+		t.size++
 		return nil
 	}
 
@@ -438,6 +444,7 @@ func (t *Tree) Put(key interface{}, data interface{}) error {
 			}
 			logger.Printf("Added %s to %s node of parent %s\n", newNode.String(), dir, parent.String())
 			t.fixupPut(newNode)
+			t.size++
 		}
 	}
 	return nil
@@ -538,7 +545,7 @@ loop:
 }
 
 // Size returns the number of items in the tree.
-func (t *Tree) Size() uint64 {
+func (t *Tree) Size() int64 {
 	visitor := &countingVisitor{}
 	t.Walk(visitor)
 	return visitor.Count
@@ -723,7 +730,7 @@ func (t *Tree) Walk(visitor Visitor) {
 // countingVisitor counts the number
 // of nodes in the tree.
 type countingVisitor struct {
-	Count uint64
+	Count int64
 }
 
 func (v *countingVisitor) Visit(node *Node) {

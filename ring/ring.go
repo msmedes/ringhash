@@ -3,10 +3,11 @@ package ring
 import (
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"math"
 	"sync"
+	"sync/atomic"
 
+	"github.com/OneofOne/xxhash"
 	"github.com/msmedes/ringhash/rbt"
 )
 
@@ -27,9 +28,9 @@ type Ring struct {
 	mu sync.RWMutex
 }
 
-func Uint64Comparator(o1, o2 interface{}) int {
-	i1 := o1.(uint64)
-	i2 := o2.(uint64)
+func int64Comparator(o1, o2 interface{}) int {
+	i1 := o1.(int64)
+	i2 := o2.(int64)
 	switch {
 	case i1 > i2:
 		return 1
@@ -43,7 +44,7 @@ func Uint64Comparator(o1, o2 interface{}) int {
 
 func NewRing(nodes []string, config *Config) *Ring {
 	r := &Ring{
-		store:        rbt.NewTreeWith(Uint64Comparator),
+		store:        rbt.NewTreeWith(int64Comparator),
 		nodeMap:      make(map[string]*node),
 		virtualNodes: config.VirtualNodes,
 		loadFactor:   config.LoadFactor,
@@ -113,7 +114,7 @@ func (r *Ring) Get(key string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.store.Size() == 0 {
+	if r.store.FastSize() == 0 {
 		return "", errors.New("Empty ring")
 	}
 
@@ -122,13 +123,13 @@ func (r *Ring) Get(key string) (string, error) {
 	queryHash := hash(key)
 	queryNode = r.store.Nearest(queryHash)
 
-	var iterations uint64
+	var iterations int64
 
 	for {
-		if iterations >= r.store.Size() {
+		if iterations >= int64(r.store.FastSize()) {
 			return "", errors.New("Ring under max load")
 		}
-		if queryHash > queryNode.GetKey().(uint64) {
+		if queryHash > queryNode.GetKey().(int64) {
 			successor := queryNode.Successor()
 			if successor != nil {
 				queryNode = successor
@@ -173,10 +174,12 @@ func newNode(name string) *node {
 	}
 }
 
-func hash(s string) uint64 {
-	h := fnv.New64a()
+func hash(s string) int64 {
+	h := xxhash.New32()
 	h.Write([]byte(s))
-	return h.Sum64()
+	checksum := h.Sum32()
+	h.Reset()
+	return int64(checksum)
 }
 
 func (r *Ring) NodeMap() map[string]*node {
@@ -187,9 +190,9 @@ func (r *Ring) Finished(node string) {
 	if _, ok := r.nodeMap[node]; !ok {
 		return
 	}
-	r.nodeMap[node].load--
+	atomic.AddInt64(&r.nodeMap[node].load, -1)
 	if r.totalLoad > 0 {
-		r.totalLoad--
+		atomic.AddInt64(&r.totalLoad, -1)
 	}
 }
 
